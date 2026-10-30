@@ -1,0 +1,63 @@
+# Render Blueprint — déploiement gratuit (Phase 8)
+# 1. Créez un compte sur https://render.com
+# 2. "New" -> "Blueprint" -> sélectionnez ce dépôt
+# 3. Renseignez les variables marquées sync:false
+
+services:
+  - type: web
+    name: football-value-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    healthCheckPath: /v1/health
+    envVars:
+      - key: FVA_ENVIRONMENT
+        value: prod
+      - key: FVA_LOG_LEVEL
+        value: INFO
+      - key: FVA_DOCS_ENABLED
+        value: "false"
+      - key: FVA_DATABASE_URL
+        sync: false
+      - key: FVA_REDIS_URL
+        sync: false
+      - key: FVA_CELERY_BROKER_URL
+        sync: false
+      - key: FVA_CELERY_RESULT_BACKEND
+        sync: false
+      - key: FVA_JWT_SECRET
+        generateValue: true
+      - key: FVA_CORS_ORIGINS
+        value: ""
+
+  - type: worker
+    name: football-value-worker
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    dockerCommand: celery -A app.jobs.celery_app.celery_app worker --loglevel=INFO --concurrency=1
+    envVars:
+      - key: FVA_ENVIRONMENT
+        value: prod
+      - key: FVA_DATABASE_URL
+        sync: false
+      - key: FVA_REDIS_URL
+        sync: false
+      - key: FVA_CELERY_BROKER_URL
+        sync: false
+      - key: FVA_CELERY_RESULT_BACKEND
+        sync: false
+      - key: FVA_JWT_SECRET
+        sync: false
+
+databases:
+  - name: football-value-db
+    plan: free
+    databaseName: fva
+    user: fva
+
+  - name: football-value-redis
+    plan: free
+    maxmemoryPolicy: allkeys-lru

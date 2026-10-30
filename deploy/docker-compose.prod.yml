@@ -1,0 +1,104 @@
+name: football-value-ai-prod
+
+x-backend-env: &backend-env
+  FVA_ENVIRONMENT: prod
+  FVA_LOG_LEVEL: INFO
+  FVA_DATABASE_URL: postgresql+asyncpg://fva:${POSTGRES_PASSWORD}@postgres:5432/fva
+  FVA_REDIS_URL: redis://redis:6379/0
+  FVA_CELERY_BROKER_URL: redis://redis:6379/1
+  FVA_CELERY_RESULT_BACKEND: redis://redis:6379/2
+  FVA_JWT_SECRET: ${FVA_JWT_SECRET}
+  FVA_DOCS_ENABLED: "false"
+  FVA_CORS_ORIGINS: ""
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: fva
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: fva
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fva -d fva"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ../backend
+    environment: *backend-env
+    command:
+      - sh
+      - -c
+      - alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ../backend
+    environment: *backend-env
+    command:
+      - celery
+      - -A
+      - app.jobs.celery_app.celery_app
+      - worker
+      - --loglevel=INFO
+      - --concurrency=2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  beat:
+    build:
+      context: ../backend
+    environment: *backend-env
+    command:
+      - celery
+      - -A
+      - app.jobs.celery_app.celery_app
+      - beat
+      - --loglevel=INFO
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

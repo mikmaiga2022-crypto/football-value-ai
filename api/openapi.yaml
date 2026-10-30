@@ -1,0 +1,640 @@
+openapi: 3.1.0
+info:
+  title: Football Value AI API
+  version: 1.0.0
+  description: |
+    Contrat REST v1 (sous-ensemble Phase 2). Aucune donnée réelle n'est incluse :
+    les exemples illustrent uniquement la forme des réponses.
+    Les probabilités sont des estimations, aucun gain n'est garanti.
+servers:
+  - url: https://api.footballvalue.ai/v1
+    description: Production
+  - url: https://staging.footballvalue.ai/v1
+    description: Staging
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+  - name: Matches
+  - name: Predictions
+  - name: Value
+  - name: Favorites
+  - name: Stats
+  - name: Meta
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Connexion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 10 }
+                device:
+                  type: object
+                  properties:
+                    label: { type: string }
+                    platform: { type: string, enum: [android] }
+                    app_version: { type: string }
+      responses:
+        '200':
+          description: Jetons et profil
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [access_token, refresh_token, user]
+                properties:
+                  access_token: { type: string }
+                  refresh_token: { type: string }
+                  expires_in: { type: integer, example: 900 }
+                  user: { $ref: '#/components/schemas/User' }
+                  permissions:
+                    type: array
+                    items: { type: string }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Rotation du refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string }
+      responses:
+        '200':
+          description: Nouveau couple de jetons
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token: { type: string }
+                  refresh_token: { type: string }
+                  expires_in: { type: integer }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /me:
+    get:
+      tags: [Auth]
+      summary: Profil courant
+      responses:
+        '200':
+          description: Profil
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /matches:
+    get:
+      tags: [Matches]
+      summary: Liste des matchs
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - name: status
+          in: query
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [scheduled, live, halftime, finished, postponed, cancelled]
+        - name: competition
+          in: query
+          style: form
+          explode: true
+          schema:
+            type: array
+            items: { type: string }
+        - { name: q, in: query, schema: { type: string, minLength: 2, maxLength: 80 } }
+        - { name: analyzed, in: query, schema: { type: boolean } }
+        - { name: has_value, in: query, schema: { type: boolean } }
+        - { name: timezone, in: query, schema: { type: string, example: Africa/Ouagadougou } }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page de matchs
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, page, meta]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/MatchSummary' }
+                  page: { $ref: '#/components/schemas/Page' }
+                  meta: { $ref: '#/components/schemas/Meta' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /matches/{match_id}:
+    get:
+      tags: [Matches]
+      summary: Fiche détaillée
+      parameters:
+        - $ref: '#/components/parameters/MatchId'
+      responses:
+        '200':
+          description: Fiche agrégée
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MatchDetail' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /matches/{match_id}/predictions:
+    get:
+      tags: [Predictions]
+      summary: Probabilités par marché
+      parameters:
+        - $ref: '#/components/parameters/MatchId'
+        - { name: market, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Prédictions
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PredictionSet' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /matches/{match_id}/opportunities:
+    get:
+      tags: [Value]
+      summary: Meilleures opportunités du match
+      parameters:
+        - $ref: '#/components/parameters/MatchId'
+      responses:
+        '200':
+          description: Classement, éventuellement vide (no_bet)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, no_bet]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Opportunity' }
+                  no_bet: { type: boolean }
+                  reason: { type: string }
+
+  /opportunities:
+    get:
+      tags: [Value]
+      summary: Flux global des opportunités
+      parameters:
+        - { name: priority, in: query, schema: { type: string, enum: [A, B, C, D] } }
+        - { name: market, in: query, schema: { type: string } }
+        - { name: date, in: query, schema: { type: string, format: date } }
+        - { name: min_ev, in: query, schema: { type: number, minimum: 0, maximum: 1 } }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Liste paginée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Opportunity' }
+                  page: { $ref: '#/components/schemas/Page' }
+                  meta: { $ref: '#/components/schemas/Meta' }
+
+  /opportunities/{opportunity_id}:
+    get:
+      tags: [Value]
+      summary: Détail et explication d'une opportunité
+      parameters:
+        - name: opportunity_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Détail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Opportunity' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /favorites:
+    get:
+      tags: [Favorites]
+      summary: Liste des favoris
+      parameters:
+        - { name: type, in: query, schema: { type: string, enum: [match, team, competition] } }
+      responses:
+        '200':
+          description: Favoris
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Favorite' }
+    post:
+      tags: [Favorites]
+      summary: Ajouter un favori
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Favorite' }
+      responses:
+        '201':
+          description: Créé
+        '409':
+          description: Déjà favori
+
+  /stats/summary:
+    get:
+      tags: [Stats]
+      summary: Performance agrégée du moteur
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: Statistiques avec échantillon et IC
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StatsSummary' }
+
+  /meta/health:
+    get:
+      tags: [Meta]
+      security: []
+      summary: Santé publique du service
+      responses:
+        '200':
+          description: Statut
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [ok, degraded, down] }
+                  server_time: { type: string, format: date-time }
+        '503':
+          description: Indisponible
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    MatchId:
+      name: match_id
+      in: path
+      required: true
+      schema: { type: string }
+    Cursor:
+      name: cursor
+      in: query
+      schema: { type: string }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+
+  responses:
+    Unauthorized:
+      description: Authentification requise ou token invalide
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Ressource inexistante
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: Trop de requêtes
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, request_id]
+          properties:
+            code: { type: string, example: DATA_STALE }
+            message: { type: string }
+            details: { type: object, additionalProperties: true }
+            request_id: { type: string }
+
+    Meta:
+      type: object
+      required: [server_time, api_version]
+      properties:
+        server_time: { type: string, format: date-time }
+        api_version: { type: string }
+
+    Page:
+      type: object
+      required: [has_more]
+      properties:
+        next_cursor: { type: [string, 'null'] }
+        has_more: { type: boolean }
+
+    User:
+      type: object
+      required: [id, email, timezone, locale]
+      properties:
+        id: { type: string }
+        email: { type: string, format: email }
+        display_name: { type: string }
+        timezone: { type: string }
+        locale: { type: string }
+        roles:
+          type: array
+          items: { type: string }
+
+    Team:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        short_name: { type: string }
+        logo_url: { type: string, format: uri }
+
+    Competition:
+      type: object
+      required: [code, name, country]
+      properties:
+        code: { type: string }
+        name: { type: string }
+        country: { type: string }
+        logo_url: { type: string, format: uri }
+
+    AnalysisState:
+      type: object
+      required: [state]
+      properties:
+        state: { type: string, enum: [pending, running, ready, stale, unavailable] }
+        model_version: { type: string }
+        predicted_at: { type: string, format: date-time }
+
+    DataQuality:
+      type: object
+      required: [score]
+      properties:
+        score: { type: number, minimum: 0, maximum: 1 }
+        flags:
+          type: array
+          items: { type: string }
+
+    ValueSummary:
+      type: object
+      properties:
+        best_priority: { type: string, enum: [A, B, C, D, NO_BET] }
+        count: { type: integer }
+        top_ev: { type: string }
+
+    MatchSummary:
+      type: object
+      required: [id, competition, kickoff_utc, status, home, away]
+      properties:
+        id: { type: string }
+        competition: { $ref: '#/components/schemas/Competition' }
+        season: { type: string }
+        round: { type: string }
+        kickoff_utc: { type: string, format: date-time }
+        kickoff_local: { type: string }
+        timezone: { type: string }
+        status:
+          type: string
+          enum: [scheduled, live, halftime, finished, postponed, cancelled, suspended, abandoned]
+        minute: { type: [integer, 'null'] }
+        home: { $ref: '#/components/schemas/Team' }
+        away: { $ref: '#/components/schemas/Team' }
+        score:
+          type: object
+          properties:
+            home: { type: [integer, 'null'] }
+            away: { type: [integer, 'null'] }
+        analysis: { $ref: '#/components/schemas/AnalysisState' }
+        data_quality: { $ref: '#/components/schemas/DataQuality' }
+        value_summary: { $ref: '#/components/schemas/ValueSummary' }
+
+    MatchDetail:
+      allOf:
+        - $ref: '#/components/schemas/MatchSummary'
+        - type: object
+          properties:
+            venue:
+              type: [object, 'null']
+              properties:
+                name: { type: string }
+                city: { type: string }
+            standings: { type: [object, 'null'] }
+            form: { type: [object, 'null'] }
+            head_to_head: { type: [object, 'null'] }
+            injuries: { type: [array, 'null'], items: { type: object } }
+            lineups:
+              type: [object, 'null']
+              properties:
+                is_official: { type: boolean }
+                published_at: { type: string, format: date-time }
+            unavailable_reasons:
+              type: array
+              items: { type: string }
+
+    SelectionProbability:
+      type: object
+      required: [code, probability, ci, fair_odds]
+      properties:
+        code: { type: string }
+        probability: { type: number, exclusiveMinimum: 0, exclusiveMaximum: 1 }
+        ci:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items: { type: number }
+        fair_odds: { type: string }
+
+    MarketPrediction:
+      type: object
+      required: [market, line, selections]
+      properties:
+        market: { type: string }
+        line: { type: number }
+        selections:
+          type: array
+          items: { $ref: '#/components/schemas/SelectionProbability' }
+
+    PredictionSet:
+      type: object
+      required: [match_id, model, predicted_at, markets, uncertainty, disclaimer]
+      properties:
+        match_id: { type: string }
+        model:
+          type: object
+          properties:
+            code: { type: string }
+            version: { type: string }
+            trained_at: { type: string, format: date-time }
+        predicted_at: { type: string, format: date-time }
+        data_quality: { $ref: '#/components/schemas/DataQuality' }
+        markets:
+          type: array
+          items: { $ref: '#/components/schemas/MarketPrediction' }
+        expected_goals:
+          type: object
+          properties:
+            home: { type: number }
+            away: { type: number }
+            total: { type: number }
+        top_scorelines:
+          type: array
+          items:
+            type: object
+            properties:
+              score: { type: string }
+              probability: { type: number }
+        uncertainty:
+          type: object
+          properties:
+            level: { type: string, enum: [low, medium, high] }
+            drivers:
+              type: array
+              items: { type: string }
+        disclaimer: { type: string }
+
+    OddsMeta:
+      type: object
+      required: [observed_at, age_seconds, is_verified, is_available, source]
+      properties:
+        observed_at: { type: string, format: date-time }
+        age_seconds: { type: integer, minimum: 0 }
+        is_verified: { type: boolean }
+        is_available: { type: boolean }
+        source: { type: string }
+
+    Opportunity:
+      type: object
+      required:
+        - id
+        - match_id
+        - market
+        - selection
+        - bookmaker
+        - odds
+        - odds_meta
+        - probability_ai
+        - probability_ci
+        - probability_novig
+        - fair_odds
+        - ev
+        - ev_lower
+        - score
+        - priority
+        - model_version
+        - status
+      properties:
+        id: { type: string }
+        match_id: { type: string }
+        market: { type: string }
+        line: { type: number }
+        selection: { type: string }
+        label: { type: string }
+        bookmaker:
+          type: object
+          properties:
+            code: { type: string }
+            name: { type: string }
+            access: { type: string, enum: [api, manual, partner] }
+        odds: { type: string }
+        odds_meta: { $ref: '#/components/schemas/OddsMeta' }
+        probability_ai: { type: number }
+        probability_ci:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items: { type: number }
+        probability_novig: { type: number }
+        fair_odds: { type: string }
+        ev: { type: string }
+        ev_lower: { type: string }
+        edge: { type: string }
+        score: { type: number, minimum: 0, maximum: 100 }
+        priority: { type: string, enum: [A, B, C, D, NO_BET] }
+        uncertainty: { type: number }
+        reasons:
+          type: array
+          items: { type: string }
+        risks:
+          type: array
+          items: { type: string }
+        model_version: { type: string }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: [string, 'null'], format: date-time }
+        status: { type: string, enum: [active, expired, withdrawn, settled] }
+
+    Favorite:
+      type: object
+      required: [entity_type, entity_id]
+      properties:
+        entity_type: { type: string, enum: [match, team, competition] }
+        entity_id: { type: string }
+        created_at: { type: string, format: date-time }
+
+    StatsSummary:
+      type: object
+      required: [period, n, roi, yield, hit_rate, clv, max_drawdown, ci95]
+      properties:
+        period:
+          type: object
+          properties:
+            from: { type: string, format: date }
+            to: { type: string, format: date }
+        n: { type: integer }
+        roi: { type: number }
+        yield: { type: number }
+        hit_rate: { type: number }
+        clv: { type: number }
+        max_drawdown: { type: number }
+        ci95:
+          type: array
+          items: { type: number }
+        sufficient_sample: { type: boolean }
