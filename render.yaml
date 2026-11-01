@@ -60,4 +60,3 @@ databases:
 
   - name: football-value-redis
     plan: free
-    maxmemoryPolicy: allkeys-lru
