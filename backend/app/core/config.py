@@ -9,6 +9,7 @@ côté workers (voir docs/02 §9).
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -126,16 +127,14 @@ def get_settings() -> Settings:
 settings = get_settings()
 
 # Support des variables standard (Render/Heroku) en complément de FVA_*.
-import os as _os
-
-_database_url = _os.environ.get("DATABASE_URL")
-if _database_url and "FVA_DATABASE_URL" not in _os.environ:
+_database_url = os.environ.get("DATABASE_URL")
+if _database_url and "FVA_DATABASE_URL" not in os.environ:
     settings.database_url = _database_url.replace(
         "postgres://", "postgresql+asyncpg://", 1
     ).replace("postgresql://", "postgresql+asyncpg://", 1)
 
-_redis_url = _os.environ.get("REDIS_URL")
-if _redis_url and "FVA_REDIS_URL" not in _os.environ:
+_redis_url = os.environ.get("REDIS_URL")
+if _redis_url and "FVA_REDIS_URL" not in os.environ:
     settings.redis_url = _redis_url
     settings.celery_broker_url = _redis_url
     settings.celery_result_backend = _redis_url
