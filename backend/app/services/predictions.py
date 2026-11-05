@@ -16,7 +16,7 @@ async def _ensure_model(session: AsyncSession) -> ModelVersion:
     stmt = select(ModelVersion).where(ModelVersion.code == MODEL_CODE)
     model = (await session.execute(stmt)).scalars().first()
     if model is None:
-        model = ModelVersion(code=MODEL_CODE, status="active", metrics={})
+        model = ModelVersion(id=new_id("mdl"), code=MODEL_CODE, status="active", metrics={})
         session.add(model)
         await session.flush()
     return model
