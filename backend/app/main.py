@@ -43,6 +43,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Confort local uniquement : en staging/prod, `alembic upgrade head` est obligatoire.
         await create_all()
         logger.info("schéma vérifié (dev)")
+    # Amorce idempotente du catalogue par défaut.
+    from app.db.session import session_scope
+    from app.ingestion.seed import ensure_default_competitions
+    async with session_scope() as session:
+        await ensure_default_competitions(session)
+        await session.commit()
     logger.info("démarrage", extra={"extra_fields": {"environment": settings.environment}})
     try:
         yield
