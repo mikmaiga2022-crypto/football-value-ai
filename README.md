@@ -1,5 +1,7 @@
 # FOOTBALL VALUE AI — Phases 1 et 2 : architecture, socle API et application Android
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/mikmaiga2022-crypto/football-value-ai)
+
 > **Statut : Phase 1 livrée, Phase 2 livrée, Phase 3 livrée, Phase 4 livrée, Phase 5 livrée, Phase 6 livrée, Phase 7 livrée, Phase 8 livrée le 30/10/2026 — en attente de validation.**
 > La Phase 4 (moteur branché sur données réelles) n'est pas démarrée.
 > Le périmètre fait foi dans **[`docs/09-decisions-validees.md`](docs/09-decisions-validees.md)** :
