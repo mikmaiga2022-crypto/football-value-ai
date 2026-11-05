@@ -82,6 +82,9 @@ class Settings(BaseSettings):
     provider_timeout_seconds: int = 10
     provider_max_retries: int = 3
 
+    # --- Amorce administrateur (bêta) ---------------------------------------
+    admin_bootstrap_token: str = ""
+
     # --- Divers -------------------------------------------------------------
     cors_origins: list[str] = Field(default_factory=list)
     request_timeout_seconds: int = 10
