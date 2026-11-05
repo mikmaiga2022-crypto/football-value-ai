@@ -30,7 +30,7 @@ services:
       - key: FVA_JWT_SECRET
         generateValue: true
       - key: FVA_CORS_ORIGINS
-        value: ""
+        value: "[]"
 
   - type: worker
     name: football-value-worker
